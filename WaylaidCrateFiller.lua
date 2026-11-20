@@ -42,12 +42,12 @@ end
 
 local ICON, GAP, ROW, NAME_WIDTH, PAD = 32, 4, 36, 150, 16
 
-local db, frame, empty, nextButton
+local db, frame, empty, nextButton, lastCrate, lastMaterial
 local rows = {}
 local dismissed, queued, wheelBound = false, false, false
 
 BINDING_HEADER_WAYLAIDCRATEFILLER = "Waylaid Crate Filler"
-_G["BINDING_NAME_CLICK WaylaidCrateFillerNext:LeftButton"] = "Fill next crate"
+_G["BINDING_NAME_CLICK WaylaidCrateFillerNext:LeftButton"] = "Repeat last fill"
 
 local function ScanBags()
 	local crates, order, stacks = {}, {}, {}
@@ -133,14 +133,13 @@ local function CreateOption(row, i)
 	local highlight = b:CreateTexture(nil, "HIGHLIGHT")
 	highlight:SetAllPoints()
 	highlight:SetColorTexture(1, 1, 1, 0.25)
-	b.next = b:CreateTexture(nil, "OVERLAY")
-	b.next:SetPoint("TOPLEFT", -6, 6)
-	b.next:SetPoint("BOTTOMRIGHT", 6, -6)
-	b.next:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-	b.next:SetBlendMode("ADD")
-	b.next:Hide()
 	b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 	b.count:SetPoint("BOTTOMRIGHT", -1, 2)
+	b:SetScript("PostClick", function(self)
+		if self:GetAttribute("macrotext1") then
+			lastCrate, lastMaterial = self.crate, self.material
+		end
+	end)
 	b:SetScript("OnEnter", OptionTooltip)
 	b:SetScript("OnLeave", GameTooltip_Hide)
 	return b
@@ -172,7 +171,7 @@ local function CreateRow(i)
 	return row
 end
 
-local function FillRow(row, crate, stacks, nextMacro)
+local function FillRow(row, crate, stacks, repeatMacro)
 	row.crate.crate = crate
 	row.crate.icon:SetTexture(crate.icon)
 	row.crate.count:SetText(crate.count > 1 and crate.count or "")
@@ -183,7 +182,7 @@ local function FillRow(row, crate, stacks, nextMacro)
 		if option then
 			local need, material = option[1], option[2]
 			local stack, have, split = PickStack(stacks[material], need)
-			b.material, b.need, b.have, b.split = material, need, have, split
+			b.crate, b.material, b.need, b.have, b.split = crate.id, material, need, have, split
 			b.icon:SetTexture(C_Item.GetItemIconByID(material))
 			b.icon:SetDesaturated(not stack)
 			b.icon:SetAlpha(stack and 1 or 0.4)
@@ -195,17 +194,17 @@ local function FillRow(row, crate, stacks, nextMacro)
 			end
 			local macro = stack and string.format("/use %d %d\n/use %d %d", crate.bag, crate.slot, stack.bag, stack.slot)
 			b:SetAttribute("macrotext1", macro)
-			b.next:SetShown(macro ~= nil and not nextMacro)
-			nextMacro = nextMacro or macro
+			if crate.id == lastCrate and material == lastMaterial then
+				repeatMacro = macro
+			end
 			b:Show()
 		else
 			b:SetAttribute("macrotext1", nil)
-			b.next:Hide()
 			b:Hide()
 		end
 	end
 	row:Show()
-	return nextMacro
+	return repeatMacro
 end
 
 local function Refresh()
@@ -214,11 +213,11 @@ local function Refresh()
 		return
 	end
 	local crates, stacks = ScanBags()
-	local nextMacro
+	local repeatMacro
 	for i, crate in ipairs(crates) do
-		nextMacro = FillRow(rows[i] or CreateRow(i), crate, stacks, nextMacro)
+		repeatMacro = FillRow(rows[i] or CreateRow(i), crate, stacks, repeatMacro)
 	end
-	nextButton:SetAttribute("macrotext1", nextMacro)
+	nextButton:SetAttribute("macrotext1", repeatMacro)
 	for i = #crates + 1, #rows do
 		rows[i]:Hide()
 	end

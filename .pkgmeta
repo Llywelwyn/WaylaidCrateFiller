@@ -1,1 +1,5 @@
 package-as: WaylaidCrateFiller
+
+ignore:
+  - logo.svg
+  - logo.png
