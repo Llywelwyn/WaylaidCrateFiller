@@ -1,5 +1,9 @@
 package-as: WaylaidCrateFiller
 
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 ignore:
   - logo.svg
   - logo.png

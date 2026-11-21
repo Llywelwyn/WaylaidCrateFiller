@@ -2,7 +2,7 @@
 ## Title: Waylaid Crate Filler
 ## Notes: Fill Waylaid Crates in one click. Open with /crates.
 ## Author: Lly
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_Crate_01
 ## SavedVariablesPerCharacter: WaylaidCrateFillerDB
 ## X-Website: https://github.com/Llywelwyn/WaylaidCrateFiller
