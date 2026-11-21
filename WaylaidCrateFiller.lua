@@ -31,7 +31,9 @@ local CRATES = {
 	[248713] = {{5, 15994}, {5, 18631}, {2, 16000}},
 }
 
-local MATERIALS = {}
+local RECEIPT = 262902
+
+local MATERIALS = {[RECEIPT] = true}
 local MAX_OPTIONS = 0
 for _, options in pairs(CRATES) do
 	for _, option in ipairs(options) do
@@ -44,7 +46,7 @@ local TURN_INS = {
 	[91899] = true, [91900] = true, [91901] = true, [91902] = true,
 	[91904] = true, [91905] = true, [91906] = true, [91907] = true,
 }
-local TURN_IN_TITLE = "A Sealed Crate"
+local TURN_IN_TITLES = {["A Sealed Crate"] = true, ["Crate Return"] = true}
 
 local ICON, GAP, ROW, NAME_WIDTH, PAD = 32, 4, 36, 150, 16
 
@@ -111,7 +113,11 @@ local function OptionTooltip(self)
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 	GameTooltip:SetItemByID(self.material)
 	GameTooltip:AddLine(" ")
-	GameTooltip:AddLine(string.format("Have %d out of %d", self.have, self.need), 1, 0.82, 0)
+	if self.material == RECEIPT then
+		GameTooltip:AddLine(string.format("Have %d", self.have), 1, 0.82, 0)
+	else
+		GameTooltip:AddLine(string.format("Have %d out of %d", self.have, self.need), 1, 0.82, 0)
+	end
 	if self.split then
 		GameTooltip:AddLine("Split across stacks", 1, 0.5, 0.25)
 	end
@@ -125,6 +131,24 @@ local function CrateTooltip(self)
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 	GameTooltip:SetBagItem(self.crate.bag, self.crate.slot)
 	GameTooltip:Show()
+end
+
+local function Ready(use)
+	for _, part in ipairs(use) do
+		local info = C_Container.GetContainerItemInfo(part[1], part[2])
+		if not info or info.itemID ~= part[3] or info.isLocked then
+			return false
+		end
+	end
+	return true
+end
+
+local function PreClick(self)
+	if InCombatLockdown() then
+		return
+	end
+	local use = self.use
+	self:SetAttribute("macrotext1", use and Ready(use) and use.macro or nil)
 end
 
 local function CreateOption(row, i)
@@ -141,6 +165,7 @@ local function CreateOption(row, i)
 	highlight:SetColorTexture(1, 1, 1, 0.25)
 	b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 	b.count:SetPoint("BOTTOMRIGHT", -1, 2)
+	b:SetScript("PreClick", PreClick)
 	b:SetScript("PostClick", function(self)
 		if self:GetAttribute("macrotext1") then
 			lastCrate, lastMaterial = self.crate, self.material
@@ -153,7 +178,7 @@ end
 
 local function CreateRow(i)
 	local row = CreateFrame("Frame", nil, frame)
-	row:SetSize(ICON + GAP + NAME_WIDTH + MAX_OPTIONS * (ICON + GAP), ICON)
+	row:SetSize(ICON + GAP + NAME_WIDTH + (MAX_OPTIONS + 1) * (ICON + GAP), ICON)
 	row:SetPoint("TOPLEFT", PAD, -40 - (i - 1) * ROW)
 	row.crate = CreateFrame("Button", nil, row)
 	row.crate:SetSize(ICON, ICON)
@@ -170,14 +195,14 @@ local function CreateRow(i)
 	row.name:SetJustifyH("LEFT")
 	row.name:SetWordWrap(true)
 	row.options = {}
-	for j = 1, MAX_OPTIONS do
+	for j = 1, MAX_OPTIONS + 1 do
 		row.options[j] = CreateOption(row, j)
 	end
 	rows[i] = row
 	return row
 end
 
-local function FillRow(row, crate, stacks, repeatMacro)
+local function FillRow(row, crate, stacks, repeatUse)
 	row.crate.crate = crate
 	row.crate.icon:SetTexture(crate.icon)
 	row.crate.count:SetText(crate.count > 1 and crate.count or "")
@@ -185,32 +210,46 @@ local function FillRow(row, crate, stacks, repeatMacro)
 	local options = CRATES[crate.id]
 	for j, b in ipairs(row.options) do
 		local option = options[j]
-		if option then
-			local need, material = option[1], option[2]
+		local receipt = not option and j == #options + 1 and stacks[RECEIPT]
+		if option or receipt then
+			local need, material = 1, RECEIPT
+			if option then
+				need, material = option[1], option[2]
+			end
 			local stack, have, split = PickStack(stacks[material], need)
 			b.crate, b.material, b.need, b.have, b.split = crate.id, material, need, have, split
 			b.icon:SetTexture(C_Item.GetItemIconByID(material))
 			b.icon:SetDesaturated(not stack)
 			b.icon:SetAlpha(stack and 1 or 0.4)
-			b.count:SetText(have .. "/" .. need)
+			b.count:SetText(receipt and have or have .. "/" .. need)
 			if stack then
 				b.count:SetTextColor(1, 1, 1)
 			else
 				b.count:SetTextColor(1, 0.3, 0.3)
 			end
-			local macro = stack and string.format("/use %d %d\n/use %d %d", crate.bag, crate.slot, stack.bag, stack.slot)
-			b:SetAttribute("macrotext1", macro)
+			local use
+			if receipt then
+				use = {{stack.bag, stack.slot, RECEIPT}, {crate.bag, crate.slot, crate.id}}
+			elseif stack then
+				use = {{crate.bag, crate.slot, crate.id}, {stack.bag, stack.slot, material}}
+			end
+			if use then
+				use.macro = string.format("/stopspelltarget\n/use %d %d\n/use %d %d", use[1][1], use[1][2], use[2][1], use[2][2])
+			end
+			b.use = use
+			b:SetAttribute("macrotext1", use and use.macro)
 			if crate.id == lastCrate and material == lastMaterial then
-				repeatMacro = macro
+				repeatUse = use
 			end
 			b:Show()
 		else
+			b.use = nil
 			b:SetAttribute("macrotext1", nil)
 			b:Hide()
 		end
 	end
 	row:Show()
-	return repeatMacro
+	return repeatUse
 end
 
 local function Refresh()
@@ -219,14 +258,17 @@ local function Refresh()
 		return
 	end
 	local crates, stacks = ScanBags()
-	local repeatMacro
+	local repeatUse
 	for i, crate in ipairs(crates) do
-		repeatMacro = FillRow(rows[i] or CreateRow(i), crate, stacks, repeatMacro)
+		repeatUse = FillRow(rows[i] or CreateRow(i), crate, stacks, repeatUse)
 	end
-	nextButton:SetAttribute("macrotext1", repeatMacro)
+	nextButton.use = repeatUse
+	nextButton:SetAttribute("macrotext1", repeatUse and repeatUse.macro)
 	for i = #crates + 1, #rows do
 		rows[i]:Hide()
 	end
+	local columns = MAX_OPTIONS + (stacks[RECEIPT] and 1 or 0)
+	frame:SetWidth(PAD * 2 + ICON + GAP + NAME_WIDTH + columns * (ICON + GAP))
 	empty:SetShown(#crates == 0)
 	frame:SetHeight(40 + math.max(#crates, 1) * ROW + 10)
 	frame:SetShown(not dismissed and (#crates > 0 or frame.pinned))
@@ -258,6 +300,7 @@ local function CreateMain()
 	nextButton:RegisterForClicks("AnyDown")
 	nextButton:SetAttribute("useOnKeyDown", true)
 	nextButton:SetAttribute("type1", "macro")
+	nextButton:SetScript("PreClick", PreClick)
 
 	frame = CreateFrame("Frame", "WaylaidCrateFillerFrame", UIParent, "BackdropTemplate")
 	frame:SetSize(PAD * 2 + ICON + GAP + NAME_WIDTH + MAX_OPTIONS * (ICON + GAP), 100)
@@ -311,7 +354,7 @@ local function CreateMain()
 end
 
 local function IsTurnIn(questID, title)
-	return TURN_INS[questID] or title == TURN_IN_TITLE
+	return TURN_INS[questID] or TURN_IN_TITLES[title]
 end
 
 local function AutoTurnIn()
