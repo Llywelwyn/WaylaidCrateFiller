@@ -4,7 +4,8 @@ Open with `/crates`.
 
 ![image](https://media.forgecdn.net/attachments/description/null/description_bb0dd1f3-167c-4426-892e-078e76da55df.png)
 
-Each crate in your bags gets a row with every material that can fill it and how many you have. Click a material to fill the crate with it, saving a click and mental effort versus having to find a crate to click on, then find the right material to fill it with in your bags.
+- Click a material to fill the crate with it, saving a click and mental effort versus having to find a crate to click on, then find the right material to fill it with in your bags.
+- Automatically hands in every "A Sealed Crate" quest. Turn this off with `/crates turnin` or holding shift/autoloot if for some reason you want to hand them all in manually.
 
 ![image](https://media.forgecdn.net/attachments/description/null/description_ba56114f-9585-4356-bb83-988fe51b8e5a.png)
 

@@ -40,6 +40,12 @@ for _, options in pairs(CRATES) do
 	MAX_OPTIONS = math.max(MAX_OPTIONS, #options)
 end
 
+local TURN_INS = {
+	[91899] = true, [91900] = true, [91901] = true, [91902] = true,
+	[91904] = true, [91905] = true, [91906] = true, [91907] = true,
+}
+local TURN_IN_TITLE = "A Sealed Crate"
+
 local ICON, GAP, ROW, NAME_WIDTH, PAD = 32, 4, 36, 150, 16
 
 local db, frame, empty, nextButton, lastCrate, lastMaterial
@@ -304,6 +310,73 @@ local function CreateMain()
 	frame:Hide()
 end
 
+local function IsTurnIn(questID, title)
+	return TURN_INS[questID] or title == TURN_IN_TITLE
+end
+
+local function AutoTurnIn()
+	return db and db.turnin and not IsModifiedClick("AUTOLOOTTOGGLE")
+end
+
+local QUEST_EVENTS = {
+	GOSSIP_SHOW = function()
+		for _, quest in ipairs(C_GossipInfo.GetActiveQuests()) do
+			if quest.isComplete and IsTurnIn(quest.questID, quest.title) then
+				C_GossipInfo.SelectActiveQuest(quest.questID)
+				return
+			end
+		end
+		for _, quest in ipairs(C_GossipInfo.GetAvailableQuests()) do
+			if IsTurnIn(quest.questID, quest.title) then
+				C_GossipInfo.SelectAvailableQuest(quest.questID)
+				return
+			end
+		end
+	end,
+	QUEST_GREETING = function()
+		for i = 1, GetNumActiveQuests() do
+			local title, isComplete = GetActiveTitle(i)
+			if isComplete and IsTurnIn(GetActiveQuestID(i), title) then
+				SelectActiveQuest(i)
+				return
+			end
+		end
+		for i = 1, GetNumAvailableQuests() do
+			local questID = select(5, GetAvailableQuestInfo(i))
+			if IsTurnIn(questID, GetAvailableTitle(i)) then
+				SelectAvailableQuest(i)
+				return
+			end
+		end
+	end,
+	QUEST_DETAIL = function()
+		if IsTurnIn(GetQuestID(), GetTitleText()) then
+			AcceptQuest()
+		end
+	end,
+	QUEST_PROGRESS = function()
+		if IsTurnIn(GetQuestID(), GetTitleText()) and IsQuestCompletable() then
+			CompleteQuest()
+		end
+	end,
+	QUEST_COMPLETE = function()
+		local choices = GetNumQuestChoices()
+		if choices <= 1 and IsTurnIn(GetQuestID(), GetTitleText()) then
+			GetQuestReward(choices)
+		end
+	end,
+}
+
+local questEvents = CreateFrame("Frame")
+for event in pairs(QUEST_EVENTS) do
+	questEvents:RegisterEvent(event)
+end
+questEvents:SetScript("OnEvent", function(_, event)
+	if AutoTurnIn() then
+		QUEST_EVENTS[event]()
+	end
+end)
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function(self, event)
@@ -313,6 +386,9 @@ events:SetScript("OnEvent", function(self, event)
 		db.point = db.point or {"CENTER", "CENTER", 0, 120}
 		if db.wheel == nil then
 			db.wheel = true
+		end
+		if db.turnin == nil then
+			db.turnin = true
 		end
 		CreateMain()
 		self:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -327,6 +403,11 @@ SlashCmdList.WAYLAIDCRATEFILLER = function(msg)
 	if msg:lower():match("^%s*wheel") then
 		db.wheel = not db.wheel
 		print("Waylaid Crate Filler: scroll to fill " .. (db.wheel and "on" or "off"))
+		return
+	end
+	if msg:lower():match("^%s*turnin") then
+		db.turnin = not db.turnin
+		print("Waylaid Crate Filler: auto turn-in " .. (db.turnin and "on" or "off"))
 		return
 	end
 	if InCombatLockdown() then
